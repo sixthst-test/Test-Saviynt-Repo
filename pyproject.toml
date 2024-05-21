@@ -1,0 +1,77 @@
+[tool.poetry]
+name = "hello-api"
+version = "1.1.0"
+description = "FastAPI template app"
+authors = ["Sixth Street Technology <technology@sixthstreet.com>"]
+license = "UNLICENSED"
+packages = [{ include = "hello_api", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "~3.11.7"
+loguru = "^0.6.0"
+fastapi = "^0.109.1"
+uvicorn = "^0.21.1"
+pyjwt = { version = "^2.6.0", extras = ["crypto"] }
+sscil = { version = "^7.1.279", extras = [
+    "webapp",
+    "http-sync",
+    "opentelemetry-core",
+    "opentelemetry-fastapi",
+] }
+opentelemetry-instrumentation-requests = "^0.45b0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+pytest = "^7.2.2"
+pylint = "^2.17.2"
+mypy = "^1.1.1"
+pytest-cov = "^4.0.0"
+httpx = "^0.24.0"
+types-requests = "^2.31.0.20240106"
+ruff = "^0.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = 'sstp_artifactory'
+url = 'https://sstp.jfrog.io/artifactory/api/pypi/pypi/simple'
+priority = "primary"
+
+[tool.pylint]
+[tool.pylint.'BASIC']
+good-names = ["f,i,j,k,ex,Run,_"]
+
+[tool.pylint.messages_control]
+disable = ["fixme"]
+
+[tool.pylint.'FORMAT']
+max-line-length = 120
+
+[[tool.mypy.overrides]]
+module = ["sscil.*"]
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["tests/"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",
+    "PLE1205",
+    "I001",
+    "ANN101",
+    "TID252",
+    "DTZ005",
+    "TD002",
+    "TD003",
+]
+logger-objects = ["loguru.logger"]

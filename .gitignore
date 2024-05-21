@@ -1,0 +1,12 @@
+venv*
+build
+**/*~
+**/*.pyc
+.idea/
+.python-version
+**/.DS_Store
+.coverage
+.vscode/
+VERSION
+scratch
+.env

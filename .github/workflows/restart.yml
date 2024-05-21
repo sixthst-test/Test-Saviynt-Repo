@@ -1,0 +1,35 @@
+name: Restart
+run-name: restart - ${{ github.event.inputs.environment || 'dev' }} - ${{ github.ref_name }}
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment (default dev)
+        type: environment
+
+# These permissions are needed to interact with GitHub's OIDC Token endpoint.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  Restart:
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    env:
+      CLUSTER_NAME: FederationECS
+      SERVICE_NAME: HelloApi # needs to match the actual service name in aws
+      AWS_DEFAULT_REGION: us-east-2
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-duration-seconds: 1200
+          role-session-name: GitHubActionsRestart
+
+      - name: Run AWS Command
+        run: aws ecs update-service --cluster ${{env.CLUSTER_NAME}} --service ${{env.SERVICE_NAME}} --force-new-deployment

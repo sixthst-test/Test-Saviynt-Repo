@@ -1,0 +1,113 @@
+{
+  "containerDefinitions": [
+    {
+      "name": "aws-otel-collector",
+      "image": "sstp.jfrog.io/sstp-docker-images/aws-otel-collector:0.38.1.2",
+      "repositoryCredentials": {
+        "credentialsParameter": "arn:aws:secretsmanager:us-east-2:$ACCOUNT:secret:core/$ARTIFACTORY_SECRET_NAME"
+      },
+      "command": ["--config", "/etc/ss-otel-collector-config-all-metrics.yaml"],
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "$LOG_GROUP",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "$LOG_STREAM_PREFIX"
+        }
+      },
+      "environment": [
+        {
+          "name": "HONEYCOMB_DATASET",
+          "value": "$HONEYCOMB_DATASET"
+        },
+        {
+          "name": "AWS_EMF_NAMESPACE",
+          "value": "$AWS_EMF_NAMESPACE"
+        },
+        {
+          "name": "AWS_EMF_LOG_GROUP_NAME",
+          "value": "$AWS_EMF_LOG_GROUP_NAME"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "HONEYCOMB_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-2:$ACCOUNT:secret:core/$HONEYCOMB_SECRET_NAME"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "/healthcheck"
+        ],
+        "interval": 5,
+        "timeout": 6,
+        "retries": 5,
+        "startPeriod": 1
+      }
+    },
+    {
+      "name": "web",
+      "image": "$CONTAINER_REPO:$VERSION",
+      "repositoryCredentials": {
+        "credentialsParameter": "arn:aws:secretsmanager:us-east-2:$ACCOUNT:secret:core/$ARTIFACTORY_SECRET_NAME"
+      },
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "secretOptions": [],
+        "options": {
+          "awslogs-group": "$LOG_GROUP",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "$LOG_STREAM_PREFIX"
+        }
+      },
+      "dependsOn": [
+        {
+          "containerName": "aws-otel-collector",
+          "condition": "START"
+        }
+      ],
+      "environment": [
+        {
+          "name": "LOGURU_LEVEL",
+          "value": "$LOGURU_LEVEL"
+        },
+        {
+          "name": "OTEL_SDK_DISABLED",
+          "value": "$OTEL_SDK_DISABLED"
+        }
+      ],
+      "portMappings": [
+        {
+          "hostPort": 80,
+          "protocol": "tcp",
+          "containerPort": 80
+        }
+      ]
+    }
+  ],
+  "family": "$FAMILY",
+  "taskRoleArn": "arn:aws:iam::$ACCOUNT:role/$ROLE",
+  "executionRoleArn": "arn:aws:iam::$ACCOUNT:role/$ROLE",
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "tags": [
+    {
+      "key": "sixthstreet:application",
+      "value": "core"
+    },
+    {
+      "key": "sixthstreet:owner",
+      "value": "coreservices-dev@sixthstreet.com"
+    },
+    {
+      "key": "map-migrated",
+      "value": "mig654SQ67S17"
+    }
+  ]
+}

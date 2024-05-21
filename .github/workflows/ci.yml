@@ -1,0 +1,49 @@
+name: CI
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    env:
+      PIP_INDEX_URL: "https://${{ secrets.ARTIFACTORY_USER }}:${{ secrets.ARTIFACTORY_PASSWORD }}@sstp.jfrog.io/artifactory/api/pypi/pypi/simple"
+      POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+      POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USER }}
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python and Poetry
+        uses: sixthst/ssp-github-actions/.github/actions/setup-python-poetry@v1.0.1
+        with:
+          poetry_version: "1.8.2"
+
+      - name: Setup Virtual Env
+        run: make build/venv
+
+      - name: Run unit tests
+        run: make unit-test
+
+      - name: Run static analysis
+        env:
+          RUFF_OUTPUT_FORMAT: github
+        run: make static-analysis
+
+      - name: Login to Artifactory
+        uses: docker/login-action@v2
+        with:
+          registry: sstp.jfrog.io
+          username: ${{ secrets.ARTIFACTORY_USER }}
+          password: ${{ secrets.ARTIFACTORY_PASSWORD }}
+
+      - name: Build image
+        run: make docker-build

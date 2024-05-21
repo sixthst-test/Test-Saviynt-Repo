@@ -1,0 +1,69 @@
+name: publish
+run-name: publish - ${{ github.ref_name }}
+on:
+  workflow_call:
+    outputs:
+      new_version:
+        description: "The new version"
+        value: ${{ jobs.publish.outputs.new_version }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.set_version.outputs.new_version }}
+
+    env:
+      PIP_INDEX_URL: "https://${{ secrets.ARTIFACTORY_USER }}:${{ secrets.ARTIFACTORY_PASSWORD }}@sstp.jfrog.io/artifactory/api/pypi/pypi/simple"
+      POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+      POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USER }}
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SSTP_GITHUBSERVICEUSER_TOKEN }}
+
+      - name: Set up Python and Poetry
+        uses: sixthst/ssp-github-actions/.github/actions/setup-python-poetry@v1.0.1
+        with:
+          poetry_version: "1.8.2"
+
+      - name: Set version
+        id: set_version
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          ATTEMPT_NUMBER: ${{ github.event_name == 'workflow_dispatch' && github.run_attempt || '' }}
+        # bump the version (to .dev if run through a workflow_dispatch) then pass the new_version as an output to be used later in other jobs
+        run: |
+          bash build_scripts/bump_version.sh $BUILD_NUMBER $ATTEMPT_NUMBER
+          echo "new_version=$(poetry version --short)" >> $GITHUB_OUTPUT
+
+      - name: Replace commit_sha
+        run: |
+          sed -i.bak 's/^COMMIT_SHA.*/COMMIT_SHA = "${{ github.sha }}"/' src/hello_api/__init__.py
+
+      - name: Login to Artifactory
+        uses: docker/login-action@v2
+        with:
+          registry: sstp.jfrog.io
+          username: ${{ secrets.ARTIFACTORY_USER }}
+          password: ${{ secrets.ARTIFACTORY_PASSWORD }}
+
+      - name: Build Docker image
+        run: make docker-build
+
+      - name: Push image to Artifactory
+        run: make docker-push
+
+      - name: Push git tag on main
+        if: github.ref_name == 'main'
+        run: |
+          if [[ $(poetry version --short) == *".dev"* ]]; then
+            echo "Not tagging main with dev version"
+          else
+            git config --global user.email "coreservices-dev@sixthstreet.com"
+            git config --global user.name "Tag Publisher"
+            git tag -a $(poetry version --short) -m "Published Version"
+            git push --tags
+          fi

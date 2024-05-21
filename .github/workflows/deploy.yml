@@ -1,0 +1,84 @@
+name: Manual Deploy
+run-name: ${{ github.event.inputs.environment || 'dev' }} - ${{ github.ref_name }}
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "AWS Environment"
+        default: "dev"
+        type: environment
+      version:
+        description: "Optionally specify a tagged Version"
+        type: string
+
+# needed for AWS credentials
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PIP_INDEX_URL: "https://${{ secrets.ARTIFACTORY_USER }}:${{ secrets.ARTIFACTORY_PASSWORD }}@sstp.jfrog.io/artifactory/api/pypi/pypi/simple"
+  AWS_DEFAULT_REGION: us-east-2
+  POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+  POETRY_HTTP_BASIC_SSTP_ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USER }}
+  buildenv: ${{ github.event.inputs.environment || 'dev' }}
+
+jobs:
+  publish:
+    # Publish only if version isn't specified and deploying a feature branch
+    if: github.event.inputs.version == '' && github.ref_name != 'main'
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
+
+  Deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    # this ensures the deploy job will run even if the publish job did not run, for example when a version is passed in
+    if: always()
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    env:
+      VERSION: ${{ github.event.inputs.version || needs.publish.outputs.new_version }}
+
+    steps:
+      - name: Exit if publish job failed
+        if: ${{ needs.publish.result == 'failure'}}
+        run: exit 1
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set VERSION from main tag
+        if: ${{ env.VERSION == '' }}
+        run: |
+          if [ -z "${VERSION}" ]; then
+            git fetch --tags origin
+            VERSION=$(git tag -n --sort=-creatordate | awk '/Published Version/{print $1; exit}')
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+            echo "No version specified. Deploying latest tag from main: ${VERSION}"
+          fi
+
+      - name: Login to Artifactory
+        uses: docker/login-action@v2
+        with:
+          registry: sstp.jfrog.io
+          username: ${{ secrets.ARTIFACTORY_USER }}
+          password: ${{ secrets.ARTIFACTORY_PASSWORD }}
+
+      - name: Pull Artifactory image
+        run: docker pull sstp.jfrog.io/sstp-docker-images/hello-api:${{env.VERSION}}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-duration-seconds: 1200
+          role-session-name: GitHubActionsDeployHelloApi
+
+      - name: Update Task Definition
+        run: make build/task.json
+
+      - name: Deploy
+        run: make update-service
